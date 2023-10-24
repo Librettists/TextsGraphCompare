@@ -1,81 +1,67 @@
-import warnings
-import re
+import json
+import string
 from typing import Generator
-import zipfile
 from pathlib import Path
 from dataclasses import dataclass
 
-import docx
 import spacy
 import nltk
 import tqdm
-import pandas as pd
 from nltk.corpus import stopwords
 
 
 @dataclass
 class Document:
     name: str
-    text: list[str]
+    tokens: list[str]
 
 
-class DocxDataReader:
-    def __init__(self, zipfile_path: Path):
-        self.path = zipfile_path
+class JsonDocReader:
+    def __init__(self, path: Path, filter_stopwords: bool = True, lemmatize: bool = True):
+        self.path = path
+        self.filter_stopwords = filter_stopwords
+        self.lemmatize = lemmatize
 
-        self.nlp = spacy.load('ru_core_news_md')
+        self.tokenizer = nltk.WordPunctTokenizer()
 
-        nltk.download('stopwords')
-        self.stop_words = stopwords.words('russian')
-        self.stop_words.extend(['\n', ',', '-', '.', '"', ')', '(', ';', '—', '/', '\t', ':'])
+        if self.filter_stopwords:
+            nltk.download('stopwords')
+            self.stop_words = stopwords.words('russian')
+            self.stop_words.extend(string.punctuation + string.whitespace)
 
-    def _read_docx_from_zipfile(self):
-        archive = zipfile.ZipFile(self.path, 'r')
+        if self.lemmatize:
+            self.nlp = spacy.load('ru_core_news_md', disable=['parser', 'ner'])
+            self._lemma_cache = {}
 
-        for name in archive.namelist():
-            if not re.fullmatch(r'.*\.docx', name):
-                continue
+    def _read_text(self) -> Generator[tuple[str, str], None, None]:
+        with open(self.path, 'r') as f:
+            docs = json.load(f)
 
-            with archive.open(name) as file:
-                doc = docx.Document(file)
-                contents = {'paragraphs': [p.text for p in doc.paragraphs if len(p.text) > 0]}
-            yield name, pd.DataFrame(data=contents)
+        for name in docs:
+            yield name, docs[name]
 
-    def _enrich_frame(self, df):
-        result = df.copy()
-        tokens = []
-        lemma = []
-        pos = []
-        col_to_parse = 'paragraphs'
+    def _get_token_lemma(self, token: str) -> str:
+        if token not in self._lemma_cache:
+            lemma = self.nlp(token)[0].lemma_
+            self._lemma_cache[token] = lemma
 
-        for x in self.nlp.pipe(df[col_to_parse].astype('unicode').values, batch_size=50):
-            if x.is_parsed:
-                tokens.append([n.text for n in x])
-                lemma.append([n.lemma_ for n in x])
-                pos.append([n.pos_ for n in x])
-            else:
-                tokens.append(None)
-                lemma.append(None)
-                pos.append(None)
+        return self._lemma_cache[token]
 
-        result['tokens'] = tokens
-        result['lemma'] = lemma
-        result['pos'] = pos
+    def _filter_stopwords(self, tokens: list[str]) -> list[str]:
+        return list(filter(lambda token: token not in self.stop_words, tokens))
 
-        return result
-
-    def _prepare_for_LDA(self, text_df):
-        with warnings.catch_warnings():
-            warnings.simplefilter('ignore')
-
-            enriched = self._enrich_frame(text_df)
-
-        text = []
-        for sentence in enriched.lemma:
-            text.extend([word for word in sentence if word not in self.stop_words])
-        return text
+    def _lemmatize_doc(self, text: str) -> list[str]:
+        return [self._get_token_lemma(token) for token in self.tokenizer.tokenize(text)]
 
     def read_documents(self) -> Generator[Document, None, None]:
-        doc_reader = self._read_docx_from_zipfile()
-        for name, df in tqdm.tqdm(doc_reader):
-            yield Document(name, self._prepare_for_LDA(df))
+        text_reader = self._read_text()
+        for name, text in tqdm.tqdm(text_reader):
+            if self.lemmatize:
+                tokens = self._lemmatize_doc(text)
+            else:
+                tokens = self.tokenizer.tokenize(text)
+
+            if self.filter_stopwords:
+                tokens = self._filter_stopwords(tokens)
+
+            yield Document(name, tokens)
