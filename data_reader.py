@@ -17,21 +17,37 @@ class Document:
 
 
 class JsonDocReader:
-    def __init__(self, path: Path, filter_stopwords: bool = True, lemmatize: bool = True):
+    def __init__(
+            self,
+            path: Path,
+            filter_stopwords: bool = True,
+            lemmatize: bool = True,
+            keep_only_words: bool = True,
+            min_token_len: int = 4,
+    ):
         self.path = path
         self.filter_stopwords = filter_stopwords
         self.lemmatize = lemmatize
+        self.keep_only_words = keep_only_words
+        self.min_token_len = min_token_len
 
         self.tokenizer = nltk.WordPunctTokenizer()
+        self.filters = []
 
         if self.filter_stopwords:
             nltk.download('stopwords')
             self.stop_words = stopwords.words('russian')
             self.stop_words.extend(string.punctuation + string.whitespace)
+            self.filters.append(lambda word: word not in self.stop_words)
+
+        if self.keep_only_words:
+            self.filters.append(lambda word: word.isalpha())
 
         if self.lemmatize:
             self.nlp = spacy.load('ru_core_news_md', disable=['parser', 'ner'])
             self._lemma_cache = {}
+
+        self.filters.append(lambda word: len(word) > self.min_token_len)
 
     def _read_text(self) -> Generator[tuple[str, str], None, None]:
         with open(self.path, 'r') as f:
@@ -47,21 +63,21 @@ class JsonDocReader:
 
         return self._lemma_cache[token]
 
-    def _filter_stopwords(self, tokens: list[str]) -> list[str]:
-        return list(filter(lambda token: token not in self.stop_words, tokens))
+    def _apply_filters(self, tokens: list[str]) -> list[str]:
+        for filter_ in self.filters:
+            tokens = filter(filter_, tokens)
 
-    def _lemmatize_doc(self, text: str) -> list[str]:
-        return [self._get_token_lemma(token) for token in self.tokenizer.tokenize(text)]
+        return list(tokens)
+
+    def _lemmatize_tokens(self, tokens: list[str]) -> list[str]:
+        return [self._get_token_lemma(token) for token in tokens]
 
     def read_documents(self) -> Generator[Document, None, None]:
         text_reader = self._read_text()
         for name, text in tqdm.tqdm(text_reader):
+            tokens = self.tokenizer.tokenize(text)
+            tokens = self._apply_filters(tokens)
             if self.lemmatize:
-                tokens = self._lemmatize_doc(text)
-            else:
-                tokens = self.tokenizer.tokenize(text)
-
-            if self.filter_stopwords:
-                tokens = self._filter_stopwords(tokens)
+                tokens = self._lemmatize_tokens(tokens)
 
             yield Document(name, tokens)
