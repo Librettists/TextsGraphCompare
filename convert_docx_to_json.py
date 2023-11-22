@@ -14,6 +14,7 @@ def _read_docx_from_zipfile(path):
 
         with archive.open(name) as file:
             doc = docx.Document(file)
+            
             text = '.'.join([' '.join(p.text.split()) for p in doc.paragraphs if len(p.text) > 0])
 
         yield name, text
