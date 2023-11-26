@@ -9,19 +9,19 @@ from wordcloud import WordCloud
 from data_reader import Document
 
 
-_words_cache = {}
-def jaccard_sim(first_doc, second_doc) -> float:
-    first_doc_words = _words_cache.get(first_doc.name, set(first_doc.tokens))
-    second_doc_words = _words_cache.get(second_doc.name, set(second_doc.tokens))
+def jaccard_sim(first_doc, second_doc, _words_cache) -> float:
+    if first_doc.name not in _words_cache:
+        _words_cache[first_doc.name] = set(first_doc.tokens)
+    if second_doc.name not in _words_cache:
+        _words_cache[second_doc.name] = set(second_doc.tokens)
 
-    _words_cache[first_doc.name] = first_doc_words
-    _words_cache[second_doc.name] = second_doc_words
+    first_doc_words = _words_cache[first_doc.name]
+    second_doc_words = _words_cache[second_doc.name]
 
-    return len(first_doc_words & second_doc_words) / len(first_doc_words | second_doc_words)
+    return len(first_doc_words.intersection(second_doc_words)) / len(first_doc_words.union(second_doc_words))
 
 
 def get_graph(docs, threshold, sim_fn):
-    threshold = 0.7
     graph = nx.Graph()
     for first_ix, first_doc in tqdm.tqdm(enumerate(docs)):
         for second_ix, second_doc in enumerate(docs[first_ix + 1:]):
@@ -29,11 +29,12 @@ def get_graph(docs, threshold, sim_fn):
             if sim < threshold:
                 continue
             graph.add_edge(first_doc.name, second_doc.name, weight=sim)
+            graph.add_edge(second_doc.name, first_doc.name, weight=sim)
 
     return graph
 
 
-def get_doc_component_most_common(component, doc_name_to_doc, n=20):
+def get_component_most_common_words(component, doc_name_to_doc, n=20):
     words_count = Counter()
     for doc_name in component:
         words_count.update(doc_name_to_doc[doc_name].tokens)
@@ -43,7 +44,7 @@ def get_doc_component_most_common(component, doc_name_to_doc, n=20):
 
 def wordcloud_from_component(component, doc_name_to_doc):
     print(len(component))
-    most_common = get_doc_component_most_common(component, doc_name_to_doc)
+    most_common = get_component_most_common_words(component, doc_name_to_doc)
 
     text = ' '.join([word for (word, count) in most_common])
     pprint(most_common)
@@ -57,7 +58,7 @@ def wordcloud_from_component(component, doc_name_to_doc):
 def compute_top_words_sim(components, model, doc_name_to_doc, topn=20):
     avg_sim = 0
     for component in components:
-        most_common_words = [word for word, count in get_doc_component_most_common(component, doc_name_to_doc)]
+        most_common_words = [word for word, count in get_component_most_common_words(component, doc_name_to_doc)]
         vectors = [model[word] for word in most_common_words if word in model]
 
         avg_component_sim = 0
