@@ -8,6 +8,7 @@ import spacy
 import nltk
 import tqdm
 from nltk.corpus import stopwords
+import pandas as pd
 
 import os
 import re
@@ -64,6 +65,7 @@ class PostPdfDocReader:
                 for token_idx, token in enumerate(line):
                     doc_data.append([token, token_idx, line_idx, doc_id, category])
         df = pd.DataFrame(doc_data, columns =['token', 'doc_token_id', 'doc_line_id', 'doc_id', 'category'])
+        df['token'] = df['token'].astype(str)
         return df, category, doc_id
 
     def read_files(self):
@@ -80,6 +82,15 @@ class PostPdfDocReader:
             df, category, doc_id = self._read_single_file(name)
             if df is not None:
                 df.to_csv(os.path.join(dirname, category + '-' + doc_id + '.csv'))
+
+    def read_saved(self, dir_name: str):
+        for file_name in os.listdir(dir_name):
+            yield pd.read_csv(dir_name + "/" + file_name)
+
+    def read_saved_as_document(self, dir_name: str):
+        for file_name in tqdm.tqdm(os.listdir(dir_name)):
+            df = pd.read_csv(dir_name + "/" + file_name)
+            yield Document(file_name, [str(t) for t in df.token])
 
 
 class JsonDocReader:
