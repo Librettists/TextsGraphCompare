@@ -55,18 +55,17 @@ def wordcloud_from_component(component, doc_name_to_doc):
     plt.show()
 
 
-def compute_top_words_sim(components, model, doc_name_to_doc, topn=20):
+def compute_top_words_sim(topics, model, topn=20):
     avg_sim = 0
-    for component in components:
-        most_common_words = [word for word, count in get_component_most_common_words(component, doc_name_to_doc)]
-        vectors = [model[word] for word in most_common_words if word in model]
+    for topic in topics:
+        vectors = [model[word] for word in topic if word in model]
 
         avg_component_sim = 0
         for i, vec1 in enumerate(vectors):
             for vec2 in vectors[i + 1:]:
                 avg_component_sim += (vec1 @ vec2) / (np.linalg.norm(vec1) * np.linalg.norm(vec2))
         avg_sim += avg_component_sim / (topn * (topn - 1) / 2)
-    avg_sim /= len(components)
+    avg_sim /= len(topics)
 
     return avg_sim
 
@@ -96,3 +95,10 @@ def filter_common_words(documents: list[Document], min_freq: int, max_freq: floa
         filtered_docs.append(Document(name=doc.name, tokens=filtered_tokens))
 
     return filtered_docs
+
+
+def cosine_sim(first_doc, second_doc, doc_to_vec):
+    first = doc_to_vec[first_doc.name]
+    second = doc_to_vec[second_doc.name]
+
+    return first @ second / np.linalg.norm(first) / np.linalg.norm(second)
