@@ -13,11 +13,12 @@ def get_topics_ctfidf(
         top_k=20,
         min_df=10,
         max_df=0.75,
+        max_features=10_000,
         reduce_frequent_words=False,
         bm25_weighting=False,
 ) -> dict[str, list[str]]:
     texts_sentences = [' '.join(component.tokens) for component in components]
-    count_vectorizer = CountVectorizer(min_df=min_df, max_df=max_df)
+    count_vectorizer = CountVectorizer(min_df=min_df, max_df=max_df, max_features=max_features)
     sentences_cv = count_vectorizer.fit_transform(texts_sentences)
 
     ctfidf = ClassTfidfTransformer(bm25_weighting, reduce_frequent_words)
