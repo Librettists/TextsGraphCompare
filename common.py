@@ -5,6 +5,7 @@ import numpy as np
 import tqdm
 import networkx as nx
 from wordcloud import WordCloud
+import community.community_louvain as community_louvain
 
 from data_reader import Document
 
@@ -102,3 +103,18 @@ def cosine_sim(first_doc, second_doc, doc_to_vec):
     second = doc_to_vec[second_doc.name]
 
     return first @ second / np.linalg.norm(first) / np.linalg.norm(second)
+
+def get_louvain_communities(graph):
+    partition = community_louvain.best_partition(graph)
+
+    communities = {}
+    for node, community_id in partition.items():
+        if community_id not in communities:
+            communities[community_id] = [node]
+        else:
+            communities[community_id].append(node)
+    return communities
+
+def print_louvain_communities(communities):
+    for community_id, nodes in communities.items():
+        print(f'Community {community_id}: {nodes}')
